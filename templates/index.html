@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Testcase Generator</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
+          rel="stylesheet" />
+    <script
+          src="https://code.jquery.com/jquery-3.5.1.min.js"
+          integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+          crossorigin="anonymous"></script>
+    <script>
+        function getControls(obj) {
+            $.ajax({
+                "url": "/controls/" + $(obj).val()
+            }).done((data) =>  {
+                var controls = data["controls"];
+                var h = "";
+                for (var i = 0; i < controls.length; i++) {
+                   h += "<div class='form-group'><input class='form-control' type='" + controls[i]["type"]
+                      + "' placeholder='" + controls[i]["display"] + "' /></div>";
+                }
+
+                $("#controls").html(h);
+            }).fail((data) => {
+                console.log(data);
+            });
+        }
+
+        var constraints = {};
+
+        function createDecisionTable() {
+            var headers = [];
+            for (var key in constraints) {
+                var d = key.split("___");
+                for (k in constraints[key])
+                    headers.push(d[0] + "___" + k);
+            }
+
+            var msg = "<tr>";
+            for (var i = 0; i < headers.length; i++) {
+                msg += "<td>" + headers[i] + "</td>";
+            }
+            msg += "<td>Expected</td>"
+            msg += "</tr>";
+
+            for (var i = 0; i < headers.length; i++) {
+                msg += "<tr>";
+                for (var j = 0; j < headers.length; j++)
+                    if (j == i)
+                        msg += "<td>0</td>";
+                    else
+                        msg += "<td>-1</td>";
+                msg += "<td><input type='text' value='invalid' /></td>";
+                msg += "</tr>";
+            }
+
+            msg += "<tr>";
+            for (var i = 0; i < headers.length; i++)
+                msg += "<td>1</td>";
+            msg += "<td><input type='text' value='valid' /></td>";
+            msg += "</tr>";
+
+            $("#decisionTableId").html(msg);
+        }
+
+
+        $(document).ready(() => {
+            $("#addContraint").click(() => {
+                var name = $("#txtName").val();
+                var cons = $("#selectConstraint").val();
+                var datatype = $("#datatypes").val();
+                var values = "";
+
+                var inputs = $("#controls input");
+                for (var i = 0; i < inputs.length; i++)
+                    values += $(inputs[i]).val() + ",";
+
+                //$("#lstConstraint").append("<div class='alert alert-danger alert-dismissible'><button type='button' class='close' data-dismiss='alert'>&times;</button>" + name + " - " + cons + ": " + values + "</div>");
+
+                name = name + "___" + datatype;
+
+                if (constraints[name] == undefined)
+                    constraints[name] = {};
+
+                constraints[name][cons] = values;
+
+                var msg = "";
+                for (var key in constraints) {
+                    var d = key.split("___");
+                    msg += "<h1>" + d[0] + " (" + d[1] + ")" + "</h1>";
+                    msg += "<ul>";
+                    for (k in constraints[key])
+                        msg += "<li>" + k + ": " + constraints[key][k] + "</li>";
+                    msg += "</ul>";
+
+                    $("#lstConstraint").html("<div class='alert alert-danger alert-dismissible'><button type='button' class='close' data-dismiss='alert'>&times;</button>" + msg + "<div><input type='button' value='DONE' class='btn btn-warning' onclick='createDecisionTable();' /></div></div>");
+                }
+                console.info(constraints);
+            });
+
+            $("#generateTCId").click(function() {
+                var rows = $("#decisionTableId tr");
+                var names = [];
+                var X = [];
+                var y = [];
+                for (var i = 0; i < rows.length; i++) {
+                    var cols = $(rows[i]).find("td");
+
+                    if (i == 0) {
+                        for (var j = 0; j < cols.length - 1; j++)
+                            names.push($(cols[j]).text());
+                    } else {
+                        var dataRow = [];
+                        for (var j = 0; j < cols.length - 1; j++)
+                            dataRow.push(parseInt($(cols[j]).text()));
+                        y.push($(cols[cols.length - 1]).find("input[type=text]").val());
+                        X.push(dataRow);
+                    }
+                }
+
+                $.ajax({
+                    "url": "/tcs",
+                    "method": "post",
+                    "data": {
+                        "X": JSON.stringify(X),
+                        "y": JSON.stringify(y),
+                        "names": JSON.stringify(names),
+                        "constraints": JSON.stringify(constraints)
+                    }
+                }).done(function(res) {
+                    console.info(res);
+                }).fail(function(res) {
+                    console.err(res);
+                });
+            });
+        });
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+            integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+            crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="container" id="main">
+
+        <h1 class="text-center text-info">TẠO TESTCASE DỰA TRÊN KỸ THUẬT BẢNG QUYẾT ĐỊNH</h1>
+        <div class="row">
+            <div class="col">
+                <div class="form-group">
+                    <input type="text" id="txtName" class="form-control" placeholder="Tên ràng buộc" />
+                </div>
+                <div class="form-group">
+                    <select class="form-control" id="datatypes">
+                        {% for k, v in data_types.items() %}
+                        <option value="{{ k }}">{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <select id="selectConstraint" class="form-control" onchange="getControls(this);">
+                        {% for k, v in constraints.items() %}
+                        <option value="{{k}}">{{v}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="controls">
+
+                </div>
+
+                <div class="form-group">
+                    <input type="button" id="addContraint"
+                           value="Thêm ràng buộc" class="btn btn-danger btn-block" />
+                </div>
+            </div>
+            <div class="col" id="lstConstraint">
+
+            </div>
+        </div>
+        <div class="row">
+            <table id="decisionTableId" class="table">
+
+            </table>
+            <div class="form-group">
+                <input type="button" id="generateTCId" class="btn btn-danger" value="Tạo Testcase" />
+            </div>
+        </div>
+    </div>
+</body>
+</html>
